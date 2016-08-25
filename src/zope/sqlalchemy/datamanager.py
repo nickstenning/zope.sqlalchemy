@@ -12,6 +12,8 @@
 #
 ##############################################################################
 
+import logging
+
 import transaction as zope_transaction
 from zope.interface import implementer
 from transaction.interfaces import ISavepointDataManager, IDataManagerSavepoint
@@ -47,6 +49,8 @@ NO_SAVEPOINT_SUPPORT = set(['sqlite'])
 
 _SESSION_STATE = {}  # a mapping of id(session) -> status
 # This is thread safe because you are using scoped sessions
+
+log = logging.getLogger(__name__)
 
 
 #
@@ -110,10 +114,27 @@ class SessionDataManager(object):
             self._finish('committed')
 
     def tpc_finish(self, trans):
-        pass
+        if self.session is not None:
+            log.warn('got to tpc_finish without cleaning up: '
+                     'sess=%r, tx=%r, state=%r',
+                     self.session,
+                     self.tx,
+                     _SESSION_STATE[id(self.session)])
+            # Set self.tx to some bogus value just so we can call finish
+            self.tx = 'florp'
+            self._finish('florp')
 
     def tpc_abort(self, trans):
         assert self.state is not 'committed'
+        if self.session is not None:
+            log.warn('got to tpc_abort without cleaning up: '
+                     'sess=%r, tx=%r, state=%r',
+                     self.session,
+                     self.tx,
+                     _SESSION_STATE[id(self.session)])
+            # Set self.tx to some bogus value just so we can call finish
+            self.tx = 'florp'
+            self._finish('florp')
 
     def sortKey(self):
         # Try to sort last, so that we vote last - we may commit in tpc_vote(),
